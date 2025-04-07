@@ -1,27 +1,53 @@
-// 📦 패키지 import
+// ✅ TapSee 완성본 with 오류 추적 추가
+
 import 'package:flutter/material.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 import 'package:camera/camera.dart';
+import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter/services.dart';
+import 'dart:convert';
 import 'dart:async';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  final cameras = await availableCameras();
-  runApp(TapSeeApp(cameras: cameras));
+  runApp(const TapSeeApp());
 }
 
 class TapSeeApp extends StatelessWidget {
-  final List<CameraDescription> cameras;
-  const TapSeeApp({required this.cameras});
+  const TapSeeApp({super.key});
 
   @override
   Widget build(BuildContext context) => MaterialApp(
         debugShowCheckedModeBanner: false,
-        theme: ThemeData(
-          scaffoldBackgroundColor: Color(0xFFFFE14D),
-        ),
-        home: TapSeeHome(cameras: cameras),
+        home: const TapSeeSplash(),
       );
+}
+
+class TapSeeSplash extends StatelessWidget {
+  const TapSeeSplash({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder(
+      future: availableCameras(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.done && snapshot.hasData) {
+          return TapSeeHome(cameras: snapshot.data!);
+        } else {
+          return const Scaffold(
+            backgroundColor: Colors.black,
+            body: Center(
+              child: Image(
+                image: AssetImage('assets/icons/tapsee_icon.png'),
+                width: 120,
+              ),
+            ),
+          );
+        }
+      },
+    );
+  }
 }
 
 class TapSeeHome extends StatefulWidget {
@@ -35,26 +61,42 @@ class TapSeeHome extends StatefulWidget {
 class _TapSeeHomeState extends State<TapSeeHome> {
   final FlutterTts tts = FlutterTts();
   late CameraController _cameraController;
+
   String message = "";
   double speechRate = 0.5;
   int tapCount = 0;
   Offset dragStart = Offset.zero;
-  bool isSpeedSetting = true;
+
+  bool isSpeedSetting = false;
   bool isCameraMode = false;
   bool analysisComplete = false;
   bool isSpeaking = false;
   bool isRepeatingTts = false;
-  bool speedSetCompleted = false;
+  bool cameraInitialized = false;
 
   @override
   void initState() {
     super.initState();
-    _initializeCamera();
+    _initApp();
+  }
+
+  void _initApp() async {
+    await _initializeCamera();
     _initTts();
-    WidgetsBinding.instance.addPostFrameCallback((_) async {
-      await _speak("TapSee를 시작합니다");
+    final prefs = await SharedPreferences.getInstance();
+    final isFirst = prefs.getBool('firstLaunch') ?? true;
+
+    await _speak("TapSee를 시작합니다");
+    await Future.delayed(const Duration(milliseconds: 800));
+
+    if (isFirst) {
+      await prefs.setBool('firstLaunch', false);
+      message = "음성 속도를 조절합니다. 위로 드래그하면 빠르게, 아래로 드래그하면 느리게 설정합니다. 화면을 두 번 탭하면 속도 조절이 완료됩니다.";
       _startSpeedSetting();
-    });
+    } else {
+      setState(() => isCameraMode = true);
+      await _showCameraGuide();
+    }
   }
 
   void _initTts() {
@@ -62,7 +104,7 @@ class _TapSeeHomeState extends State<TapSeeHome> {
     tts.awaitSpeakCompletion(true);
   }
 
-  Future _speak(String text) async {
+  Future<void> _speak(String text) async {
     await tts.stop();
     setState(() => isSpeaking = true);
     await tts.setSpeechRate(speechRate);
@@ -70,19 +112,24 @@ class _TapSeeHomeState extends State<TapSeeHome> {
     setState(() => isSpeaking = false);
   }
 
-  Future _initializeCamera() async {
-    _cameraController = CameraController(
-        widget.cameras.first, ResolutionPreset.medium,
-        enableAudio: false);
-    await _cameraController.initialize();
-    if (mounted) setState(() {});
+  Future<void> _initializeCamera() async {
+    try {
+      _cameraController = CameraController(
+        widget.cameras.first,
+        ResolutionPreset.medium,
+        enableAudio: false,
+      );
+      await _cameraController.initialize();
+      await _cameraController.setFlashMode(FlashMode.off);
+      setState(() => cameraInitialized = true);
+    } catch (e) {
+      print("카메라 초기화 실패: $e");
+    }
   }
 
   void _startSpeedSetting() async {
     setState(() {
       isSpeedSetting = true;
-      message =
-          "음성 속도를 조절합니다. 위로 드래그할수록 빠르게, 아래로 드래그할수록 느리게 설정합니다. 설정 후 화면을 두 번 탭하면 속도 조절이 완료됩니다.";
     });
     await _speak(message);
     _startRepeatingSpeedPrompt();
@@ -95,23 +142,21 @@ class _TapSeeHomeState extends State<TapSeeHome> {
         await tts.setSpeechRate(speechRate);
         await tts.speak("속도조절설정");
       }
-      await Future.delayed(Duration(milliseconds: 100));
+      await Future.delayed(const Duration(milliseconds: 100));
     }
   }
 
-  Future _completeSpeedSetting() async {
+  Future<void> _completeSpeedSetting() async {
     isRepeatingTts = false;
     setState(() {
       isSpeedSetting = false;
-      speedSetCompleted = true;
       message = "속도 조절이 완료되었습니다.";
     });
     await _speak(message);
-    await Future.delayed(Duration(milliseconds: 500));
     await _showCameraGuide();
   }
 
-  Future _showCameraGuide() async {
+  Future<void> _showCameraGuide() async {
     setState(() {
       isCameraMode = true;
       analysisComplete = false;
@@ -120,57 +165,78 @@ class _TapSeeHomeState extends State<TapSeeHome> {
     await _speak(message);
   }
 
-  Future _analyzePicture() async {
+  Future<void> _analyzePicture() async {
     setState(() {
       isCameraMode = false;
-      message = "TapSee가 분석중입니다";
+      message = "TapSee가 분석 중입니다";
       analysisComplete = false;
     });
     await _speak(message);
-    await Future.delayed(Duration(seconds: 2));
-    final intro =
-        "안녕하세요 저희는 Tap See입니다. 저희는 AI를 활용하여 시각 장애인을 위한 텍스트 분석 및 요약 내용을 음성으로 제공하는 프로그램을 만들었습니다. 저희는 음성안내에 따라 간단한 터치와 드래그로만 앱을 작동 시킬 수 있는 간편하고 편리한 어플리케이션 입니다.";
-    setState(() {
-      message = intro;
-      analysisComplete = true;
-    });
-    await _speak(intro);
+
+    final XFile file = await _cameraController.takePicture();
+    try {
+      print("📷 사진 촬영 완료. 파일 경로: ${file.path}");
+      var uri = Uri.parse("http://172.23.143.244:5000/ocr");
+      var request = http.MultipartRequest('POST', uri);
+      request.files.add(await http.MultipartFile.fromPath('image', file.path));
+      print("📤 이미지 첨부 완료. 서버에 전송 시작...");
+
+      var response = await request.send().timeout(const Duration(seconds: 8));
+      print("📥 서버 응답 수신 완료. 상태 코드: ${response.statusCode}");
+
+      if (response.statusCode == 200) {
+        var body = await response.stream.bytesToString();
+        print("📄 응답 본문: $body");
+        var result = jsonDecode(body)['result'];
+        setState(() {
+          message = result;
+          analysisComplete = true;
+        });
+        await _speak(result);
+      } else {
+        setState(() {
+          message = "텍스트 분석에 실패했습니다. (${response.statusCode})";
+          analysisComplete = true;
+        });
+        await _speak(message);
+      }
+    } catch (e, stack) {
+      print("❗ 서버 통신 중 오류 발생: $e");
+      print("🔍 오류 위치(StackTrace):\n$stack");
+      setState(() {
+        message = "서버 오류가 발생했습니다.";
+        analysisComplete = true;
+      });
+      await _speak(message);
+    }
   }
 
   void _handleTap() async {
     tapCount++;
+    HapticFeedback.mediumImpact();
+    await SystemSound.play(SystemSoundType.click);
     if (tapCount == 2) {
       tapCount = 0;
       if (isSpeedSetting) {
         await _completeSpeedSetting();
-      } else if (isCameraMode && !analysisComplete) {
-        if (_cameraController.value.isInitialized) {
-          await _cameraController.takePicture();
-          await _analyzePicture();
-        }
+      } else if (isCameraMode && cameraInitialized && !analysisComplete) {
+        await _analyzePicture();
       }
     }
   }
 
   void _handleDrag(DragUpdateDetails details) {
-    double deltaY = details.delta.dy;
     if (isSpeedSetting) {
-      speechRate = (speechRate - deltaY * 0.005).clamp(0.1, 1.0);
+      speechRate = (speechRate - details.delta.dy * 0.005).clamp(0.1, 1.0);
       tts.setSpeechRate(speechRate);
     }
   }
 
   void _handleDragEnd(DragEndDetails details) {
-    double deltaY = dragStart.dy - details.globalPosition.dy;
+    final deltaY = dragStart.dy - details.globalPosition.dy;
     if (!isSpeedSetting && analysisComplete) {
-      if (deltaY > 100) {
-        setState(() {
-          analysisComplete = false;
-        });
-        _showCameraGuide();
-      } else if (deltaY < -100) {
-        _speak(message);
-      }
+      if (deltaY > 100) _showCameraGuide();
+      else if (deltaY < -100) _speak(message);
     }
   }
 
@@ -178,52 +244,42 @@ class _TapSeeHomeState extends State<TapSeeHome> {
   void dispose() {
     _cameraController.dispose();
     tts.stop();
-    isRepeatingTts = false;
     super.dispose();
   }
 
   @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onPanStart: (d) => dragStart = d.localPosition,
-      onPanUpdate: _handleDrag,
-      onPanEnd: _handleDragEnd,
-      onTap: _handleTap,
-      child: Scaffold(
-        backgroundColor: Color(0xFFFFE14D),
-        body: Stack(
-          children: [
-            if (isCameraMode && !isSpeedSetting && !analysisComplete && _cameraController.value.isInitialized)
-              Positioned.fill(
-                child: CameraPreview(_cameraController),
-              ),
-            if (!isCameraMode || isSpeedSetting || analysisComplete)
-              Center(
-                child: Container(
-                  padding: const EdgeInsets.all(24.0),
-                  margin: const EdgeInsets.symmetric(horizontal: 24.0),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.85),
-                    border: Border.all(color: Colors.grey.shade600, width: 2),
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                  child: Text(
-                    message,
-                    style: TextStyle(
-                      color: Colors.black,
-                      fontSize: 24,
+  Widget build(BuildContext context) => GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: _handleTap,
+        onPanStart: (d) => dragStart = d.localPosition,
+        onPanUpdate: _handleDrag,
+        onPanEnd: _handleDragEnd,
+        child: Scaffold(
+          backgroundColor: const Color(0xFFFFE14D),
+          body: Stack(
+            children: [
+              if (cameraInitialized && isCameraMode && !isSpeedSetting && !analysisComplete)
+                Positioned.fill(child: CameraPreview(_cameraController)),
+              if (isSpeedSetting || analysisComplete || (!isCameraMode && !cameraInitialized) || message.isNotEmpty)
+                Center(
+                  child: Container(
+                    padding: const EdgeInsets.all(24),
+                    margin: const EdgeInsets.symmetric(horizontal: 24),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.85),
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: Colors.grey.shade600),
                     ),
-                    textAlign: TextAlign.center,
+                    child: Text(
+                      message,
+                      style: const TextStyle(fontSize: 24),
+                      textAlign: TextAlign.center,
+                    ),
                   ),
                 ),
-              ),
-          ],
+            ],
+          ),
         ),
-      ),
-    );
-  }
+      );
 }
-
-
 

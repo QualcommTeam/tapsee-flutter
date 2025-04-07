@@ -10,11 +10,11 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-  flutter_tts: ^3.8.5
+  flutter_tts: ^4.2.2
   shared_preferences: ^2.2.2
   camera: ^0.10.5+5
   cupertino_icons: ^1.0.8
-
+  http: ^0.13.6  
 dev_dependencies:
   flutter_test:
     sdk: flutter
