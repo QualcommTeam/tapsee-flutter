@@ -26,8 +26,8 @@ TapSee는 Qualcomm AI 기반의 문서 및 텍스트 인식 시스템으로, OCR
 
 
 기능 구조도
-<p align="center"> <img src="app_flutter/assets/screenshots/기능구조도.png" alt="기능 구조도" width="70%"/> </p>
+<p align="center"> <img src="app_flutter/assets/screenshots/structure.png" alt="기능 구조도" width="70%"/> </p>
 실행 예시
-<p align="center"> <img src="app_flutter/assets/screenshots/실행 1번.jpg" alt="실행 1" width="45%"/> <img src="app_flutter/assets/screenshots/실행 2번.jpg" alt="실행 2" width="45%"/> </p> <p align="center"> <img src="app_flutter/assets/screenshots/실행 3번.jpg" alt="실행 3" width="45%"/> <img src="app_flutter/assets/screenshots/실행 예시.jpg" alt="실행 예시" width="45%"/> </p>
+<p align="center"> <img src="app_flutter/assets/screenshots/run1.jpg" alt="실행 1" width="45%"/> <img src="app_flutter/assets/screenshots/run2.jpg" alt="실행 2" width="45%"/> </p> <p align="center"> <img src="app_flutter/assets/screenshots/run3.jpg" alt="실행 3" width="45%"/> <img src="app_flutter/assets/screenshots/example.jpg" alt="실행 예시" width="45%"/> </p>
 전체 스크린샷
 <p align="center"> <img src="app_flutter/assets/screenshots/home.png" alt="홈 화면" width="45%"/> <img src="app_flutter/assets/screenshots/result.png" alt="분석 결과" width="45%"/> </p>
