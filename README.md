@@ -4,6 +4,8 @@
 ![한 컷 요약](app_flutter/assets/screenshots/summary.jpeg)
 
 ---
+## 데모 영상
+[TapSee 데모 보러 가기 (YouTube Shorts)](https://youtube.com/shorts/ALgEVkFvSWw?feature=shared)
 
 ## 목차
 - 프로젝트 수행 목적  
